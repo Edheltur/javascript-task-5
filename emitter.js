@@ -1,7 +1,6 @@
 'use strict';
 
 const Delegate = require('./delegate');
-const { getSubEvents } = require('./utils');
 
 /**
  * Сделано задание на звездочку
@@ -13,7 +12,7 @@ module.exports = getEmitter;
 class Emitter {
 
     constructor() {
-        this.delegatesByEvent = new Map();
+        this.delegatesByEvent = {};
     }
 
     /**
@@ -54,12 +53,18 @@ class Emitter {
      * @returns {Emitter}
      */
     emit(event) {
-        Array.from(getSubEvents(event))
+        const subTags = event.split('.');
+        const subEvents = [];
+        while (subTags.length > 0) {
+            subEvents.push(subTags.join('.'));
+            subTags.pop();
+        }
+
+        subEvents
             .filter(key => this.delegatesByEvent.hasOwnProperty(key))
             .map(key => this.delegatesByEvent[key])
             .reduce((x, y) => x.concat(y), [])
             .forEach(delegate => delegate.tryInvoke());
-
 
         return this;
     }
@@ -74,9 +79,16 @@ class Emitter {
      * @returns {Emitter}
      */
     several(event, context, handler, times) {
-        this.on(event, context, handler, () => times-- > 0);
+        if (times <= 0) {
+            return this.on(event, context, handler);
+        }
+        let remainingInvocations = times;
 
-        return this;
+        return this.on(event, context, handler, () => {
+            remainingInvocations -= 1;
+
+            return remainingInvocations >= 0;
+        });
     }
 
     /**
@@ -89,10 +101,16 @@ class Emitter {
      * @returns {Emitter}
      */
     through(event, context, handler, frequency) {
-        let times = 0;
-        this.on(event, context, handler, () => (times++ % frequency) === 0);
+        if (frequency <= 0) {
+            return this.on(event, context, handler);
+        }
+        let invocationsCount = -1;
 
-        return this;
+        return this.on(event, context, handler, () => {
+            invocationsCount = (invocationsCount + 1) % frequency;
+
+            return invocationsCount % frequency === 0;
+        });
     }
 }
 
